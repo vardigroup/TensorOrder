@@ -1,0 +1,1 @@
+from decompositions.tree_decomposition import TreeDecomposition

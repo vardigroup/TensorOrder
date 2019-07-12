@@ -1,0 +1,66 @@
+version: '{build}'
+
+image:
+  - Visual Studio 2015
+  - Visual Studio 2017
+
+environment:
+  matrix:
+  - BUILD_SHARED_LIBS: True
+    HTD_USE_EXTENDED_IDENTIFIERS: True
+  - BUILD_SHARED_LIBS: True
+    HTD_USE_EXTENDED_IDENTIFIERS: False
+  - BUILD_SHARED_LIBS: False
+    HTD_USE_EXTENDED_IDENTIFIERS: True
+  - BUILD_SHARED_LIBS: False
+    HTD_USE_EXTENDED_IDENTIFIERS: False
+
+platform:
+  - Win32
+  - x64
+
+configuration:
+  - Release
+  - Debug
+
+build:
+  verbosity: minimal
+
+before_build:
+- ps: |
+    Write-Output "Configuration: $env:CONFIGURATION"
+    Write-Output "Platform: $env:PLATFORM"
+    $generator = switch ($env:APPVEYOR_BUILD_WORKER_IMAGE)
+    {
+        "Visual Studio 2015" {"Visual Studio 14 2015"}
+        "Visual Studio 2017" {"Visual Studio 15 2017"}
+    }
+    if ($env:PLATFORM -eq "x64")
+    {
+        $generator = "$generator Win64"
+    }
+    if ($env:APPVEYOR_BUILD_WORKER_IMAGE -eq "Visual Studio 2015")
+    {
+        del "C:\Program Files (x86)\MSBuild\14.0\Microsoft.Common.targets\ImportAfter\Xamarin.Common.targets"
+    }
+
+build_script:
+- ps: |
+    md _build -Force | Out-Null
+    cd _build
+    & cmake -G "$generator" -DCMAKE_CONFIGURATION_TYPES="Debug;Release" -DBUILD_SHARED_LIBS=$env:BUILD_SHARED_LIBS -DHTD_USE_EXTENDED_IDENTIFIERS=$env:HTD_USE_EXTENDED_IDENTIFIERS ..
+    if ($LastExitCode -ne 0) {
+        throw "Exec: $ErrorMessage"
+    }
+    & cmake --build . --config $env:CONFIGURATION
+    if ($LastExitCode -ne 0) {
+        throw "Exec: $ErrorMessage"
+    }
+
+test_script:
+- ps: |
+    & ctest -VV -C $env:CONFIGURATION --output-on-failure
+    Push-AppveyorArtifact "Testing/Temporary/LastTest.log"
+    if ($LastExitCode -ne 0) {
+        throw "Exec: $ErrorMessage"
+    }

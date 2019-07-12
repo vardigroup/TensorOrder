@@ -1,0 +1,104 @@
+/* 
+ * File:   PreprocessorDefinitions.hpp
+ * 
+ * Author: ABSEHER Michael (abseher@dbai.tuwien.ac.at)
+ * 
+ * Copyright 2015-2017, Michael Abseher
+ *    E-Mail: <abseher@dbai.tuwien.ac.at>
+ * 
+ * This file is part of htd.
+ * 
+ * htd is free software: you can redistribute it and/or modify it under 
+ * the terms of the GNU General Public License as published by the Free 
+ * Software Foundation, either version 3 of the License, or (at your 
+ * option) any later version.
+ * 
+ * htd is distributed in the hope that it will be useful, but WITHOUT 
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY 
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public 
+ * License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with htd.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef HTD_HTD_PREPROCESSORDEFINITIONS_HPP
+#define HTD_HTD_PREPROCESSORDEFINITIONS_HPP
+
+#include <htd/CompilerDetection.hpp>
+
+#include <cassert>
+
+#if HTD_COMPILER_IS_MSVC == 1
+    #define HTD_USE_VISUAL_STUDIO_COMPATIBILITY_MODE
+
+    #define MSVC_PRAGMA_WARNING_PUSH __pragma(warning(push))
+    #define MSVC_PRAGMA_DISABLE_WARNING_C4250 __pragma(warning(disable:4250))
+    #define MSVC_PRAGMA_WARNING_POP __pragma(warning(pop))
+#else
+    #define MSVC_PRAGMA_WARNING_PUSH
+    #define MSVC_PRAGMA_DISABLE_WARNING_C4250
+    #define MSVC_PRAGMA_WARNING_POP
+#endif
+
+#cmakedefine HTD_SHARED_LIBRARY
+
+#if HTD_COMPILER_IS_MSVC == 1
+    #define HTD_SYMBOL_EXPORT __declspec(dllexport)
+    #define HTD_SYMBOL_IMPORT __declspec(dllimport)
+    #define HTD_LOCAL_SYMBOL
+#else
+    #ifdef HTD_SHARED_LIBRARY
+        #if HTD_COMPILER_IS_GNU == 1 || HTD_COMPILER_IS_Clang == 1 || HTD_COMPILER_IS_AppleClang == 1
+            #define HTD_SYMBOL_EXPORT __attribute__ ((visibility ("default")))
+            #define HTD_SYMBOL_IMPORT __attribute__ ((visibility ("default")))
+            #define HTD_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+        #else
+            #define HTD_SYMBOL_EXPORT
+            #define HTD_SYMBOL_IMPORT
+            #define HTD_LOCAL_SYMBOL
+        #endif
+    #else
+        #define HTD_SYMBOL_EXPORT
+        #define HTD_SYMBOL_IMPORT
+        #define HTD_LOCAL_SYMBOL
+    #endif
+#endif
+
+#define HTD_API_TEMPLATE_EXPORT extern template class
+#define HTD_API_TEMPLATE_IMPORT extern template class HTD_SYMBOL_IMPORT
+
+#ifdef HTD_SHARED_LIBRARY
+    #ifdef htd_EXPORTS
+        #define HTD_API HTD_SYMBOL_EXPORT
+        #define HTD_API_TEMPLATE HTD_API_TEMPLATE_EXPORT
+    #else
+        #define HTD_API HTD_SYMBOL_IMPORT
+        #define HTD_API_TEMPLATE HTD_API_TEMPLATE_IMPORT
+    #endif
+    #define HTD_LOCAL HTD_API_TEMPLATE_IMPORT
+#else
+    #define HTD_API
+    #define HTD_API_TEMPLATE extern template class
+    #define HTD_LOCAL
+#endif
+
+#define HTD_UNUSED(x) (void)(x);
+
+#ifdef NDEBUG
+    #define HTD_ASSERT(x)
+#else
+    #define HTD_ASSERT(x) assert(x);
+#endif
+
+#ifdef NDEBUG
+    #define DEBUGGING_CODE(x)
+#else
+    #ifdef HTD_DEBUG_OUTPUT
+        #define DEBUGGING_CODE(x) x
+    #else
+        #define DEBUGGING_CODE(x)
+    #endif
+#endif
+
+#endif /* HTD_HTD_PREPROCESSORDEFINITIONS_HPP */

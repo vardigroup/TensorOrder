@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+for infile in `ls test_instance`
+do
+ file=${infile%.*}
+ outfile="$file.td"
+ echo $file
+ ./tw-exact2 < "test_instance/$infile" > "test_result/$outfile" |\
+ tr -d '\r' 
+done
