@@ -112,9 +112,8 @@ venv.bak/
 *.zip
 
 # Local experiment data
-/experiments/*
-# Local figure data
-/figures/*
+/experiments/experiment_data/*
+/experiments/figures/*
 
 # C++ object files
 /cpp/*.o
