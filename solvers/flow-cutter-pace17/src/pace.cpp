@@ -32,7 +32,7 @@ using namespace std;
 ArrayIDIDFunc tail, head;
 const char*volatile best_decomposition = 0;
 int best_bag_size = numeric_limits<int>::max();
-int print_below;
+int print_tw_below;
 
 void ignore_return_value(long long){}
 
@@ -369,7 +369,7 @@ void test_new_order(const ArrayIDIDFunc&order){
 			best_bag_size = x;
 			const char*old_decomposition = best_decomposition;
 			best_decomposition = compute_decomposition_given_order(order);
-			if(x < print_below) {
+			if(x <= print_tw_below) {
 				print_comment("outputing bagsize " + to_string(best_bag_size));
 				ignore_return_value(write(STDOUT_FILENO, best_decomposition, strlen(best_decomposition)));
 				string terminator = "=\n";
@@ -402,13 +402,13 @@ int main(int argc, char*argv[]){
 		}
 
 		int random_seed = 0;
-		print_below = 0;
+		print_tw_below = 0;
 		
 		if(argc >= 3){
 			if(string(argv[1]) == "-s"){
 				random_seed = atoi(argv[2]);
 			} else if(string(argv[1]) == "-p"){
-				print_below = atoi(argv[2]);
+				print_tw_below = atoi(argv[2]);
 			}
 		}
 		
@@ -416,7 +416,7 @@ int main(int argc, char*argv[]){
 			if(string(argv[3]) == "-s"){
 				random_seed = atoi(argv[4]);
 			} else if(string(argv[3]) == "-p"){
-				print_below = atoi(argv[4]);
+				print_tw_below = atoi(argv[4]);
 			}
 		}
 
@@ -465,7 +465,7 @@ int main(int argc, char*argv[]){
 				const char*old_decomposition = best_decomposition;
 				best_decomposition = new_decomposition;
 				best_bag_size = tw;
-				if(best_bag_size < print_below) {					
+				if(best_bag_size <= print_tw_below) {					
 					print_comment("outputing bagsize " + to_string(best_bag_size));
 					ignore_return_value(write(STDOUT_FILENO, best_decomposition, strlen(best_decomposition)));
 					string terminator = "=\n";

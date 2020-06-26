@@ -196,10 +196,12 @@ void htd_io::CustomGrFormatGraphToTreeDecompositionProcessor::process(std::istre
                 decomposition = customizedAlgorithm->computeDecomposition(*graph, *preprocessedGraph, [&](const htd::IMultiHypergraph & graph,
                                                                                                           const htd::ITreeDecomposition & decomposition,
                                                                                                           const htd::FitnessEvaluation & fitness)
-                {					
+                {
                     implementation_->invokeDecompositionCallbacks(fitness);
-					implementation_->exporter_->write(decomposition, graph, std::cout);
-					std::cout << "=" << std::endl << std::flush;
+                    if (decomposition.maximumBagSize() <= 100) {
+                        implementation_->exporter_->write(decomposition, graph, std::cout);
+                        std::cout << "=" << std::endl << std::flush;
+                    }
                 });
             }
             else
@@ -225,8 +227,10 @@ void htd_io::CustomGrFormatGraphToTreeDecompositionProcessor::process(std::istre
                                                                                       const htd::FitnessEvaluation & fitness)
                 {
                     implementation_->invokeDecompositionCallbacks(fitness);
-					implementation_->exporter_->write(decomposition, graph, std::cout);
-					std::cout << "=" << std::endl << std::flush;
+                    if (decomposition.maximumBagSize() <= 100) {
+                        implementation_->exporter_->write(decomposition, graph, std::cout);
+                        std::cout << "=" << std::endl << std::flush;
+                    }
                 });
             }
             else

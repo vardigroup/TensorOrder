@@ -37,7 +37,7 @@ public class MainDecomposer{
   private static Bag[] bags;
   private static long detectSum;
   private static long startTime;
-  private static int print_bag_below;
+  private static int print_tw_below;
 
   private static final boolean DEBUG = false;
 
@@ -79,7 +79,7 @@ public class MainDecomposer{
           best = trivial;
           comment("width = " + best.width);
           printTime();
-		  if(best.width <= print_bag_below) {
+		  if(best.width <= print_tw_below-1) {
 			TreeDecomposition result = getBestTreeDecompositionSoFar();
 			result.writeTo(System.out);
 			System.out.print("=\n");
@@ -96,7 +96,7 @@ public class MainDecomposer{
         best = td;
         comment("width = " + best.width);
         printTime();
-        if(best.width <= print_bag_below) {
+        if(best.width <= print_tw_below-1) {
           TreeDecomposition result = getBestTreeDecompositionSoFar();
           result.writeTo(System.out);
           System.out.print("=\n");
@@ -126,7 +126,7 @@ public class MainDecomposer{
       best = td;
       comment("width = " + best.width);
       printTime();
-	  if(best.width <= print_bag_below) {
+	  if(best.width <= print_tw_below-1) {
 		TreeDecomposition result = getBestTreeDecompositionSoFar();
 		result.writeTo(System.out);
 		System.out.print("=\n");
@@ -868,19 +868,19 @@ public class MainDecomposer{
         });
 
     long seed = 42;
-	print_bag_below = -1;
+	print_tw_below = -1;
     if(args.length >= 2){
       if("-s".equals(args[0])){
         seed = Long.parseLong(args[1]);
       } else if("-p".equals(args[0])){
-        print_bag_below = Integer.parseInt(args[1]);
+        print_tw_below = Integer.parseInt(args[1]);
       }
     }
     if(args.length >= 4){
       if("-s".equals(args[2])){
         seed = Long.parseLong(args[3]);
       } else if("-p".equals(args[2])){
-        print_bag_below = Integer.parseInt(args[3]);
+        print_tw_below = Integer.parseInt(args[3]);
       }
     }
 
