@@ -1,6 +1,10 @@
 import click
+import ctypes
+import os
+import queue
 import signal
 import sys
+import threading
 import time
 
 
@@ -13,6 +17,8 @@ class TimeoutTimer:
 
     def __init__(self, initial_timeout):
         self._initial_timeout = initial_timeout
+        self._start_time = 0
+        self._end_time = 0
 
     def __enter__(self):
         """
@@ -23,11 +29,15 @@ class TimeoutTimer:
         def handler(signum, frame):
             raise TimeoutError()
 
-        signal.signal(signal.SIGALRM, handler)
+        try:
+            signal.signal(signal.SIGALRM, handler)
 
+            if self._initial_timeout > 0:
+                signal.setitimer(signal.ITIMER_REAL, self._initial_timeout)
+        except AttributeError:
+            log("Unable to use signals; timeout will be less effective")
         self._start_time = time.time()
-        if self._initial_timeout > 0:
-            signal.setitimer(signal.ITIMER_REAL, self._initial_timeout)
+        self._end_time = self._start_time + self._initial_timeout
         return self
 
     def recap_timeout(self, new_timeout):
@@ -45,9 +55,15 @@ class TimeoutTimer:
         new_time_remaining = self._start_time + new_timeout - time.time()
         if new_time_remaining < 0:
             self.cancel()
+            self._end_time = self._start_time + new_timeout
             raise TimeoutError()
-        elif signal.getitimer(signal.ITIMER_REAL)[0] > new_time_remaining:
-            signal.setitimer(signal.ITIMER_REAL, new_time_remaining)
+        else:
+            try:
+                if signal.getitimer(signal.ITIMER_REAL)[0] > new_time_remaining:
+                    signal.setitimer(signal.ITIMER_REAL, new_time_remaining)
+            except AttributeError:
+                pass
+            self._end_time = self._start_time + new_timeout
 
     def reset_timeout(self, new_timeout):
         """
@@ -58,28 +74,41 @@ class TimeoutTimer:
         """
         if new_timeout == 0:
             self.cancel()
+            self._end_time = self._start_time + new_timeout
             return
 
         new_time_remaining = self._start_time + new_timeout - time.time()
         if new_time_remaining < 0:
             self.cancel()
+            self._end_time = self._start_time + new_timeout
             raise TimeoutError()
         else:
-            signal.setitimer(signal.ITIMER_REAL, new_time_remaining)
+            try:
+                signal.setitimer(signal.ITIMER_REAL, new_time_remaining)
+            except AttributeError:
+                pass
+            self._end_time = self._start_time + new_timeout
 
     def __exit__(self, exit_type, value, traceback):
         """
         Cancel the timer.
         :return: None
         """
-        signal.setitimer(signal.ITIMER_REAL, 0)
+        self.cancel()
 
     def cancel(self):
         """
         Cancel the timer.
         :return: None
         """
-        signal.setitimer(signal.ITIMER_REAL, 0)
+        try:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        except AttributeError:
+            pass
+        self._end_time = self._start_time
+
+    def expired(self):
+        return time.time() > self._end_time
 
 
 class Stopwatch:
@@ -256,5 +285,119 @@ class TaggedChoice(click.Choice):
         return "TypedChoice(%r)" % list(self.choices)
 
 
+class FileLocator:
+    """
+    A class to aid in the lookup of files that may or may not be in a Singularity image.
+
+    Files in a Singularity image are relative to root.
+    Other files are relative to the local directory.
+    """
+
+    def __getitem__(self, location):
+        if os.path.exists(location):
+            return location
+        elif os.path.exists("/" + location):
+            return "/" + location
+        elif os.path.exists("../" + location):
+            return "../" + location
+        else:
+            raise EnvironmentError("Unable to locate " + location)
+
+
+class DimacsStream:
+    """
+    A class to aid in parsing of a DIMACS-style filestream.
+    """
+
+    def __init__(
+        self,
+        stream,
+        comment_prefixes=frozenset({"c", "O"}),
+        process_comment=lambda x: None,
+    ):
+        """
+        :param stream: Input stream to parse.
+        :param comment_prefixes: A set of characters of prefixes indicating a comment line.
+        :param process_comment: A method to call on all comments discovered during the parse.
+        """
+        self.__stream = stream
+        self.__comment_prefixes = comment_prefixes
+        self.__process_comment = process_comment
+
+    def parse_line(self, allowed_prefixes=None):
+        """
+        Locate and parse the next line of a DIMACS-style stream, ignoring comments.
+
+        Raises a RuntimeError if this line has an unexpected prefix.
+
+        :param allowed_prefixes: A set of characters of prefixes to allow.
+        :return: A list of space-separated elements of the next line, or None if EOF.
+        """
+        for line in self.__stream:
+            if len(line) == 0:
+                continue
+            elif line[0] in self.__comment_prefixes:
+                self.__process_comment(line.rstrip())
+                continue
+            elif allowed_prefixes is None or line[0] in allowed_prefixes:
+                return line.split()
+            else:
+                raise RuntimeError("Unexpected line prefix in: {0}".format(line))
+
+
 def log(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
+
+
+def kill_on_crash(sig=None):
+    """
+    Ensure that the child process is killed if the parent exits (e.g. from a cython segfault).
+
+    From https://stackoverflow.com/questions/320232/ensuring-subprocesses-are-dead-on-exiting-python-program
+    """
+    if sig is None:
+        sig = signal.SIGKILL
+
+    def do():
+        libc = ctypes.CDLL("libc.so.6")
+        return libc.prctl(1, sig)
+
+    return do
+
+
+class BufferedStream:
+    """
+    Buffer the output of the stream through a queue on a separate thread.
+
+    An unbuffered process.stdout stream does not behave well with timeouts.
+    """
+
+    def __init__(self, stream, timer=None):
+        self.__stream = stream
+        self.__timer = timer
+        self.__queue = queue.Queue()
+        self.__finished = False
+
+        def enqueue_output():
+            for line in self.__stream:
+                self.__queue.put(line)
+            self.__stream.close()
+            self.__finished = True
+
+        self.__thread = threading.Thread(target=enqueue_output)
+        self.__thread.daemon = True
+        self.__thread.start()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            try:
+                if self.__timer is not None and self.__timer.expired():
+                    # If the timer does not successfully go off (i.e., Windows), trigger it here
+                    raise TimeoutError()
+                return self.__queue.get(block=True, timeout=1)
+            except queue.Empty:
+                if self.__finished:
+                    raise StopIteration
