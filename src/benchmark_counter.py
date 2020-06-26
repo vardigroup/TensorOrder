@@ -7,7 +7,7 @@ from util import KeyValueOutput, TimeoutTimer, Stopwatch, log
 from util import Formula
 
 """
-This tool provides a uniform API to run benchmarks on various other model counters.
+This tool provides a uniform API to run benchmarks on various model counters.
 """
 
 
@@ -18,7 +18,7 @@ def run():
 
 @run.command()
 @click.argument("benchmark", default="-", type=click.Path(exists=True, dir_okay=False))
-@click.option("--timeout", required=False, type=int, help="Timeout (s).")
+@click.option("--timeout", default=0, type=int, help="Timeout (s).")
 @click.option(
     "--output",
     type=KeyValueOutput("a", lazy=False),
@@ -63,7 +63,7 @@ def sharpsat(benchmark, timeout, output, counter):
 
 @run.command()
 @click.argument("benchmark", default="-", type=click.Path(exists=True, dir_okay=False))
-@click.option("--timeout", required=False, type=int, help="Timeout (s).")
+@click.option("--timeout", default=0, type=int, help="Timeout (s).")
 @click.option(
     "--output",
     type=KeyValueOutput("a", lazy=False),
@@ -122,7 +122,7 @@ def minic2d(benchmark, timeout, output, counter, rewrite_benchmark):
 
 @run.command()
 @click.argument("benchmark", default="-", type=click.Path(exists=True, dir_okay=False))
-@click.option("--timeout", required=False, type=int, help="Timeout (s).")
+@click.option("--timeout", default=0, type=int, help="Timeout (s).")
 @click.option(
     "--output",
     type=KeyValueOutput("a", lazy=False),
@@ -312,7 +312,7 @@ def cachet(benchmark, timeout, output, counter, weighted):
 
 @run.command()
 @click.argument("benchmark", default="-", type=click.File(mode="r"))
-@click.option("--timeout", required=False, type=int, help="Timeout (s).")
+@click.option("--timeout", default=0, type=int, help="Timeout (s).")
 @click.option(
     "--output",
     type=KeyValueOutput("a", lazy=False),

@@ -1,10 +1,13 @@
 import click
+import os
+import pickle
 import random
+import sys
+import time
 import traceback
 
 import contraction_methods
 import tensor_network
-import tensor_network.tensor_apis
 import util
 
 
@@ -43,36 +46,81 @@ import util
     help="Method to use to find decomposition",
     type=util.TaggedChoice(contraction_methods.ALL_SOLVERS, case_sensitive=False),
 )
-def run(benchmark, timeout, output, seed, network_construction, method):
+@click.option(
+    "--store",
+    required=False,
+    type=click.Path(writable=True),
+    help="Folder to store all discovered contraction trees",
+    default=None,
+)
+@click.option(
+    "--method_affinity",
+    required=False,
+    default=None,
+    help="CPU affinity for finding decomposition",
+)
+def run(
+    benchmark,
+    timeout,
+    output,
+    seed,
+    network_construction,
+    method,
+    store,
+    method_affinity,
+):
+    sys.setrecursionlimit(100000)
+    stopwatch = util.Stopwatch()
     if seed is not None:
         random.seed(seed)
+    else:
+        seed = random.randrange(1000000)  # for decomposition solvers
 
-    tensor_api = tensor_network.tensor_apis.NumpyAPI()
-    network = network_construction(benchmark, tensor_api.create_tensor_factory("float"))
+    if store is not None and not os.path.exists(store):
+        os.makedirs(store)
+
+    network = network_construction(benchmark)
     util.log("Constructed network", flush=True)
+    stopwatch.record_interval("Construction")
 
-    stopwatch = util.Stopwatch()
-    log = []
-    best_width = {}
-    with util.TimeoutTimer(timeout) as _:
+    log_trees = []  # Discovered trees, to be saved at the end
+    log = []  # Log and store only decompositions of lower carving width
+    full_log = []  # Log all decompositions
+    best_cw = None
+    with util.TimeoutTimer(timeout) as timer:
+        tree_gen = method.generate_contraction_trees(
+            network, timer, seed=seed, affinity=method_affinity
+        )
         try:
-            for tree, _ in method(network, random_seed=seed):
+            for tree, new_network in tree_gen:
                 width = {"Carving": tree.maxrank}
 
                 # Treewidth-based methods include the width of the underlying tree decomposition
                 if hasattr(tree, "treewidth"):
                     width["Tree"] = tree.treewidth
+                if hasattr(tree, "branchwidth"):
+                    width["Branch"] = tree.branchwidth
 
-                util.log("Found decomposition with " + str(width))
-                for width_type in width:
-                    if (
-                        width_type not in best_width
-                        or best_width[width_type] > width[width_type]
-                    ):
-                        best_width[width_type] = width[width_type]
-                log.append((stopwatch.elapsed_time(), width))
+                util.log("Found decomposition with " + str(width), flush=True)
+                elapsed_time = stopwatch.elapsed_time()
+
+                FLOPs, _, _ = tree.estimate_cost(set())
+                full_log.append((elapsed_time, width, FLOPs))
+                if best_cw is None or best_cw > width["Carving"]:
+                    best_cw = width["Carving"]
+                    log.append((elapsed_time, width, FLOPs))
+                    if store is not None:
+                        log_trees.append(
+                            (
+                                (elapsed_time, tree, new_network),
+                                store + "/" + str(len(log)) + ".con",
+                            )
+                        )
+                        util.log(
+                            "Saved contraction tree " + str(time.time()), flush=True
+                        )
         except TimeoutError:
-            if best_width is {}:
+            if best_cw is None:
                 util.log("No decomposition found within the timeout", flush=True)
                 output.output_pair("Error", "decomposition timeout")
         except MemoryError:
@@ -82,10 +130,11 @@ def run(benchmark, timeout, output, seed, network_construction, method):
             util.log("Error during search for decomposition", flush=True)
             util.log(traceback.format_exc())
             output.output_pair("Error", "decomposition unknown error")
-
-    for width_type in best_width:
-        output.output_pair(width_type, best_width[width_type])
+        tree_gen.close()
     output.output_pair("Log", repr(str(log)))
+    output.output_pair("FullLog", repr(str(full_log)))
+    for info, filename in log_trees:
+        pickle.dump(info, open(filename, "wb"))
 
 
 if __name__ == "__main__":

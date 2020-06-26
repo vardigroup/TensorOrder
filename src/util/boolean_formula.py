@@ -1,9 +1,9 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 
 class Formula:
     def __init__(self):
-        self._variables = {}
+        self._variables = OrderedDict()
         self._clauses = []
 
     def add_clause(self, literals):
@@ -70,15 +70,14 @@ class Formula:
                 if positive_weight == negative_weight:
                     normalization_constant *= positive_weight
                     f.write(
-                        "w\t%d\t%f\n" % (var, -1)
+                        "w %d %d\n" % (var, -1)
                     )  # special cachet syntax for 1-1 variables
                 else:
                     # Normalize the weights, if required
                     if positive_weight + negative_weight != 1:
                         normalization_constant *= positive_weight + negative_weight
                         positive_weight /= positive_weight + negative_weight
-                        f.write("w\t%d\t%f\n" % (var, positive_weight))
-
+                    f.write("w %d %f\n" % (var, positive_weight))
             # Write all clauses.
             f.writelines(
                 ["%s 0\n" % " ".join(map(str, clause)) for clause in self._clauses]
@@ -187,12 +186,17 @@ class Formula:
 
         num_vars = 0
         for line in file:
-            if len(line) == 0 or line[0] == "c":
+            if line.startswith("c weights"):  # MiniC2D weights
+                weights = line.split(" ")[2:]
+                for i in range(len(weights) // 2):
+                    vars[i + 1] = result.fresh_variable(
+                        float(weights[2 * i + 1]), float(weights[2 * i])
+                    )
+            elif len(line) == 0 or line[0] == "c":
                 continue
-
-            if line[0] == "p":
+            elif line[0] == "p":
                 num_vars = int(line.split()[2])
-            elif line[0] == "w":
+            elif line[0] == "w":  # Cachet weights
                 args = line.split()
                 if float(args[2]) == -1:
                     vars[int(args[1])] = result.fresh_variable(1, 1)

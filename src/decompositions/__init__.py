@@ -1,1 +1,3 @@
+from decompositions.branch_decomposition import BranchDecomposition
+from decompositions.carving_decomposition import CarvingDecomposition
 from decompositions.tree_decomposition import TreeDecomposition

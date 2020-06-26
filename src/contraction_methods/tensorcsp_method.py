@@ -1,26 +1,38 @@
-from contraction_methods.contraction_tree import (
-    ContractionTreeNode,
-    ContractionTreeLeaf,
-    include_rank_zero_tensors,
-)
+from contraction_methods.contraction_method import ContractionMethod
+from contraction_methods.contraction_tree import ContractionTreeContext
 
 
-def igraph_do_tree_combine(d):
-    if len(d) == 0:
-        return d
-    elif len(d) == 1:
-        return d[0]
-    else:
-        return ContractionTreeNode(*d)
+def igraph_do_tree_combine(context):
+    def do(d):
+        if len(d) == 0:
+            return d
+        elif len(d) == 1:
+            return d[0]
+        else:
+            return context.join(*d)
+
+    return do
 
 
-def igraph_contraction(contractor):
-    def generate_contraction_trees(network, random_seed):
+class IGraphMethod(ContractionMethod):
+    def __init__(self, contractor):
+        self.__contractor = contractor
+
+    def generate_contraction_trees(self, tensor_network, timer, **solver_args):
+        """
+        Construct and yield contraction trees for the provided network.
+
+        :param tensor_network: The tensor network to find contraction trees for.
+        :param timer: A timer to check expiration of.
+        :param solver_args: Additional arguments for the contraction tree algorithm.
+        :return: An iterator of contraction trees for the provided network.
+        """
         import igraph
 
-        structure_graph = network.structure()
+        structure_graph = tensor_network.structure(include_rank_zero=False)
         graph = igraph.Graph()
 
+        context = ContractionTreeContext()
         # TensorCSP methods do not handle graphs with degree 0 nodes, so remove them
         # (remove them after adding edges to maintain edge numbers)
         to_remove = []
@@ -28,19 +40,19 @@ def igraph_contraction(contractor):
             if structure_graph.degree(index) == 0:
                 to_remove.append(index)
             graph.add_vertex(
-                index, contraction_tree=ContractionTreeLeaf(network, index)
+                index, contraction_tree=context.leaf(tensor_network, index)
             )
         for edge in structure_graph.edges(data=False):
             graph.add_edge(*edge)
         graph.delete_vertices(to_remove)
 
-        _, result = contractor(
-            graph, combine_attrs={"contraction_tree": igraph_do_tree_combine}
+        _, result = self.__contractor(
+            graph, combine_attrs={"contraction_tree": igraph_do_tree_combine(context)}
         )
-        tree = include_rank_zero_tensors(network, result.vs[0]["contraction_tree"])
-        yield tree, network
-
-    return generate_contraction_trees
+        tree = context.include_rank_zero_tensors(
+            tensor_network, result.vs[0]["contraction_tree"]
+        )
+        yield context.get_tree(tree), tensor_network
 
 
 def tensorcsp_greedy(graph, **kwargs):
@@ -67,7 +79,7 @@ def tensorcsp_girvan(graph, **kwargs):
 
 
 SOLVERS = {
-    "KCMR-greedy": igraph_contraction(tensorcsp_greedy),
-    "KCMR-metis": igraph_contraction(tensorcsp_metis),
-    "KCMR-gn": igraph_contraction(tensorcsp_girvan),
+    "KCMR-greedy": IGraphMethod(tensorcsp_greedy),
+    "KCMR-metis": IGraphMethod(tensorcsp_metis),
+    "KCMR-gn": IGraphMethod(tensorcsp_girvan),
 }
