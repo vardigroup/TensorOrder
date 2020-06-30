@@ -56,3 +56,8 @@ TensorOrder requires the following python packages (see [requirements.txt](requi
 5. `cython`
 6. `threadpoolctl`
 7. `tensorflow` (optional)
+
+### Publications
+Please cite the following article if you use our code in a publication:
+
+* [Parallel Weighted Model Counting with Tensor Networks](https://arxiv.org/abs/2006.15512). Jeffrey M. Dudek and Moshe Y. Vardi. Proceedings of MCW'20.
