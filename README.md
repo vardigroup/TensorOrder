@@ -21,9 +21,9 @@ Once built, containers can be used as follows to run TensorOrder:
 docker run -i tensororder:latest python /src/tensororder.py --method="line-Flow" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
 ```
 
-By default, this runs the tensor network contraction on all available CPU cores. One can also choose to use the GPU to perform the contraction:
+By default, this runs the tensor network contraction on all available CPU cores. One can also choose to use the GPU to perform the contraction. This requires [nvidia-container-runtime](https://nvidia.github.io/nvidia-container-runtime/) to be installed.
 ```
-docker run -i tensororder-gpu:latest python /src/tensororder.py --method="line-Flow" --tensor_library="tensorflow-gpu" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
+docker run -i --gpus all tensororder-gpu:latest python /src/tensororder.py --method="line-Flow" --tensor_library="tensorflow-gpu" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
 ```
 
 Both docker containers are compatible with [Turbine](https://github.com/Kasekopf/Turbine) to run experiments on Google Cloud.
