@@ -18,7 +18,7 @@ RUN apt-get clean \
 && make config shared=1 \
 && make \
 && make install \
-&& pip install click numpy python-igraph networkx==2.1.0 metis turbine cython threadpoolctl
+&& pip install click==7.1.2 numpy python-igraph networkx==2.1.0 metis turbine cython threadpoolctl
 
 COPY solvers/htd-master /solvers/htd-master
 RUN cd /solvers/htd-master \

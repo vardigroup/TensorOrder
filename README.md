@@ -5,7 +5,7 @@ A Python 3 tool for automatically contracting tensor networks for weighted model
 Because of the variety of dependencies used in the various graph decomposition tools, it is recommended to use the docker container to run TensorOrder.
 
 ### Building the container
-The container (for singlecore and multi-core) can be built with the following commands:
+The docker container (for singlecore and multi-core) can be built with the following commands:
 ```
 docker build --tag tensororder .
 ```
@@ -16,7 +16,7 @@ docker build --tag tensororder-gpu -f Dockerfile-gpu .
 ```
 
 ### Using the container
-Once built, containers can be used as follows to run TensorOrder:
+Once built, docker containers can be used as follows to run TensorOrder:
 ```
 docker run -i tensororder:latest python /src/tensororder.py --method="line-Flow" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
 ```
@@ -27,6 +27,21 @@ docker run -i --gpus all tensororder-gpu:latest python /src/tensororder.py --met
 ```
 
 Both docker containers are compatible with [Turbine](https://github.com/Kasekopf/Turbine) to run experiments on Google Cloud.
+
+## Running with Singularity
+There is also a [Singularity](https://sylabs.io/singularity/) container available for TensorOrder.
+
+### Building the container
+The Singularity container can be built with the following commands:
+```
+sudo singularity build tensororder Singularity
+```
+
+### Using the container
+Once built, Singularity containers can be used as follows to run TensorOrder:
+```
+./tensororder --method="line-Flow" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
+```
 
 
 ## Running without containers
