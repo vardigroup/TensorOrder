@@ -149,7 +149,7 @@ cdef class TreeDecomposition:
         """
 
         def record(comment):
-            util.log(comment.rstrip(), flush=True)
+            util.log(comment.rstrip(), util.Verbosity.solver_output)
 
         dimacs = util.DimacsStream(stream, process_comment=record)
 
@@ -158,7 +158,7 @@ cdef class TreeDecomposition:
             if header is None:
                 return None
         numbags, bag_size, _ = int(header[2]), int(header[3]), int(header[4])
-        util.log("Read header at " + str(time.time()), flush=True)
+        util.log("Read header at " + str(time.time()), util.Verbosity.solver_output)
 
         cdef size_t num_nodes = numbags
         cdef size_t i

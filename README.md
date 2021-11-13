@@ -18,15 +18,21 @@ docker build --tag tensororder-gpu -f Dockerfile-gpu .
 ### Using the container
 Once built, docker containers can be used as follows to run TensorOrder:
 ```
-docker run -i tensororder:latest python /src/tensororder.py --method="line-Flow" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
+docker run -i tensororder:latest python /src/tensororder.py --planner="line-Flow" --weights="unweighted" < "benchmarks/cubic_vertex_cover/raw/50/cubic_vc_50_0.cnf"
 ```
 
-By default, this runs the tensor network contraction on all available CPU cores. One can also choose to use the GPU to perform the contraction. This requires [nvidia-container-runtime](https://nvidia.github.io/nvidia-container-runtime/) to be installed.
+By default, this runs the tensor network contraction on all available CPU cores with numpy. One can also choose to use the GPU to perform the contraction. This requires [nvidia-container-runtime](https://nvidia.github.io/nvidia-container-runtime/) to be installed.
 ```
-docker run -i --gpus all tensororder-gpu:latest python /src/tensororder.py --method="line-Flow" --tensor_library="tensorflow-gpu" < "benchmarks/cubic_vertex_cover/cubic_vc_50_0.cnf"
+docker run -i --gpus all tensororder-gpu:latest python /src/tensororder.py --planner="line-Flow" --weights="unweighted" --tensor_library="tensorflow-gpu" < "benchmarks/cubic_vertex_cover/raw/50/cubic_vc_50_0.cnf"
+```
+
+It is also possible to connect to a TPU on Google Cloud to perform the tensor contractions:
+```
+docker run -i tensororder:latest python /src/tensororder.py --timeout="1000" --planner="line-Flow" --weights="unweighted" --tensor_library="jax-tpu" --entry_type="float32" --tpu="10.6.165.2" < "benchmarks/cubic_vertex_cover/raw/50/cubic_vc_50_0.cnf"
 ```
 
 Both docker containers are compatible with [Turbine](https://github.com/Kasekopf/Turbine) to run experiments on Google Cloud.
+
 
 ## Running with Singularity
 There is also a [Singularity](https://sylabs.io/singularity/) container available for TensorOrder.

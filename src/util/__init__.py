@@ -1,2 +1,2 @@
 from util.util import *
-from util.boolean_formula import Formula
+from util.boolean_formula import Formula, WeightFormat

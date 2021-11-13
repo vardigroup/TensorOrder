@@ -158,9 +158,15 @@ cdef ChildInfo factor_tree(
             continue
         # A rank 2 tensor with an edge on either side is fully represented, just needs to be joined to some side
         elif tensor_network.__index_lists[tensor_id].size() == 2:
-            left_contraction = context.join(
-                left_contraction, context.leaf(tensor_network, tensor_id)
-            )
+            # Join on the smaller side
+            if left.intermediate_edge.size() < right.intermediate_edge.size():
+                left_contraction = context.join(
+                    left_contraction, context.leaf(tensor_network, tensor_id)
+                )
+            else:
+                right_contraction = context.join(
+                    right_contraction, context.leaf(tensor_network, tensor_id)
+                )
         # Tensors with a subset of edges on either side induce a factoring
         else:
             # In particular, factor to group the intermediate_edge on either side
@@ -233,7 +239,7 @@ cdef object extract_contraction_tree_from_tree(TensorNetwork tensor_network, Tre
     """
     # Construct a mapping from the leaves of the decomposition and the edges of the network
     cdef unordered_map[int, int] node_to_edge = extract_tree_decomposition_edges(tensor_network, decomposition)
-    util.log("Extracted edges at " + str(time.time()), flush=True)
+    util.log("Extracted edges at " + str(time.time()), util.Verbosity.solver_output)
 
     # Ensure every node of the tree decomposition has degree 3 or fewer.
     decomposition.split_high_degree_nodes()
@@ -281,14 +287,14 @@ class FactorTree(ContractionMethod):
         :return: An iterator of contraction trees for the provided network.
         """
 
-        util.log("Starting solver at " + str(time.time()), flush=True)
+        util.log("Starting solver at " + str(time.time()), util.Verbosity.solver_output)
         best_width = None
         for decomposition in self.__solver.generate_decompositions(
             lambda file: tensor_network.save_structure(file, False),
             {"print_tw_below": 100, **solver_args},
             timer
         ):
-            util.log("Parsed decomposition at " + str(time.time()), flush=True)
+            util.log("Parsed decomposition at " + str(time.time()), util.Verbosity.solver_output)
 
             network = tensor_network.copy()  # make a copy of the network to modify
             if isinstance(decomposition, TreeDecomposition):
@@ -301,7 +307,7 @@ class FactorTree(ContractionMethod):
                 tree.branchwidth = decomposition.width()
             else:
                 raise RuntimeError("Unknown decomposition type " + str(decomposition))
-            util.log("Built contraction tree " + str(time.time()), flush=True)
+            util.log("Built contraction tree " + str(time.time()), util.Verbosity.solver_output)
             yield tree, network
 
 

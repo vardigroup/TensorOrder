@@ -71,7 +71,7 @@ cdef class BranchDecomposition:
         """
 
         def record(comment):
-            util.log(comment.rstrip(), flush=True)
+            util.log(comment.rstrip(), util.Verbosity.solver_output)
 
         dimacs = util.DimacsStream(stream, process_comment=record)
 
@@ -80,7 +80,7 @@ cdef class BranchDecomposition:
             if header is None:
                 return None
         num_bags, num_nodes, branch_width, _ = int(header[2]), int(header[3]), int(header[4]), int(header[5])
-        util.log("Read header at " + str(time.time()))
+        util.log("Read header at " + str(time.time()), util.Verbosity.solver_output)
 
         cdef size_t i
         result = BranchDecomposition()

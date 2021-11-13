@@ -48,7 +48,7 @@ class DecompositionSolver:
 
 def parse_decomposition(stream):
     def record(comment):
-        util.log(comment.rstrip(), flush=True)
+        util.log(comment.rstrip(), util.Verbosity.solver_output)
 
     dimacs = util.DimacsStream(
         stream, process_comment=record, comment_prefixes=frozenset({"c", "O", "="})

@@ -56,26 +56,28 @@ class IGraphMethod(ContractionMethod):
 
 
 def tensorcsp_greedy(graph, **kwargs):
-    import tensorcsp.grut
+    import contraction_methods.tensorcsp.grut
 
-    return tensorcsp.grut.contract_greedy(graph, **kwargs)
+    return contraction_methods.tensorcsp.grut.contract_greedy(graph, **kwargs)
 
 
 def tensorcsp_metis(graph, **kwargs):
-    import tensorcsp.grut
+    import contraction_methods.tensorcsp.grut
 
-    partitioning = tensorcsp.grut.recursive_bipartition(
-        graph, tensorcsp.grut.metis_bipartition
+    partitioning = contraction_methods.tensorcsp.grut.recursive_bipartition(
+        graph, contraction_methods.tensorcsp.grut.metis_bipartition
     )
-    return tensorcsp.grut.contract_dendrogram(graph, partitioning, **kwargs)
+    return contraction_methods.tensorcsp.grut.contract_dendrogram(
+        graph, partitioning, **kwargs
+    )
 
 
 def tensorcsp_girvan(graph, **kwargs):
-    import tensorcsp.grut
+    import contraction_methods.tensorcsp.grut
 
     d = graph.community_edge_betweenness()
     m = d.merges
-    return tensorcsp.grut.contract_dendrogram(graph, m, **kwargs)
+    return contraction_methods.tensorcsp.grut.contract_dendrogram(graph, m, **kwargs)
 
 
 SOLVERS = {

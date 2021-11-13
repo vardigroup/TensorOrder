@@ -1,12 +1,10 @@
 # distutils: language=c++
 # distutils: extra_compile_args=-O3
 
-import networkx as nx
 from itertools import combinations, product
 from typing import Tuple, List, Iterator
 import tensor_network.tensor
-import time
-
+import contraction_methods.contraction_tree
 
 from libcpp.vector cimport vector
 
@@ -85,6 +83,8 @@ cdef class TensorNetwork:
             file.write(b"%d %d\n" % (edge.tensor1_id + 1, edge.tensor2_id + 1))
 
     def structure(self, include_rank_zero: bool = False, display: bool = True):
+        import networkx as nx
+
         result = nx.MultiGraph()
         for index, node in enumerate(self.__nodes):
             if not include_rank_zero and node.rank == 0:
@@ -108,6 +108,7 @@ cdef class TensorNetwork:
                     file.write(b"%d %d\n" % (self.__index_lists[node_id][i]+1, self.__index_lists[node_id][j]+1))
 
     def line_structure(self):
+        import networkx as nx
         result = nx.Graph()
 
         for node_id, connections in enumerate(self.__index_lists):
@@ -138,9 +139,8 @@ cdef class TensorNetwork:
         )
         return np.einsum(operands, *tensors)
 
-    def identify(self, contraction_tree, tensor_api, keep_log):
+    def identify(self, contraction_tree, tensor_api):
         stack = []
-        log = []
         for node in contraction_tree.iterate_postorder():
             if node.is_leaf:
                 stack.append(
@@ -149,15 +149,134 @@ cdef class TensorNetwork:
             else:
                 right_tensor = stack.pop()
                 left_tensor = stack.pop()
-                start = time.time()
                 contraction_result = tensor_api.tensordot(
                     left_tensor, right_tensor, (node.left_edge_map, node.right_edge_map)
                 )
-                elapsed = time.time() - start
-                if keep_log:
-                    log.append((node.left.free_edges, node.right.free_edges, elapsed))
                 stack.append(contraction_result)
-        return stack[0], log
+        return stack[0]
+
+    def contract_pair(self, left_index, left_edge_map, right_index, right_edge_map, free_edges, tensor_api):
+        left = self.__nodes[left_index].build(tensor_api.create_tensor)
+        right = self.__nodes[right_index].build(tensor_api.create_tensor)
+        result = tensor_api.tensordot(left, right, (left_edge_map, right_edge_map))
+        result_connections = self.add_node(tensor_network.tensor.BuiltTensor(result))
+        cdef result_index = len(self.__nodes) - 1
+
+        # Correct the edges incident to the new node
+        cdef size_t i, e
+        cdef size_t rank = len(free_edges)
+        for i in range(rank):
+            e = free_edges[i]
+            self.__index_lists[result_index][i] = e
+            if self.__edges[e].tensor1_id == left_index or self.__edges[e].tensor1_id == right_index:
+                self.__edges[e].tensor1_id = result_index
+            elif self.__edges[e].tensor2_id == left_index or self.__edges[e].tensor2_id == right_index:
+                self.__edges[e].tensor2_id = result_index
+
+        left = self.__nodes[left_index] = None
+        right = self.__nodes[right_index] = None
+        return result_index
+
+    def identify_partial(self, contraction_tree, tensor_api, contract_below):
+        stack = []
+
+        result_tree_context = contraction_methods.contraction_tree.ContractionTreeContext()
+
+        for node in contraction_tree.iterate_postorder():
+            if node.is_leaf:
+                stack.append((True, node.tensor_index))
+            else:
+                right_created, right = stack.pop()
+                left_created, left = stack.pop()
+                if left_created and right_created and len(node.free_edges) < contract_below:
+                    contraction_result = self.contract_pair(
+                        left, node.left_edge_map, right, node.right_edge_map, node.free_edges, tensor_api
+                    )
+                    stack.append((True, contraction_result))
+                else:
+                    if left_created:
+                        # virtualize left
+                        left = result_tree_context.leaf(self, left)
+                    if right_created:
+                        # virtualize right
+                        right = result_tree_context.leaf(self, right)
+                    stack.append((False, result_tree_context.join(left, right)))
+
+        top_created, top = stack.pop()
+        if top_created:
+            # virtualize top
+            top = result_tree_context.leaf(self, top)
+
+        # Remove tensors that have already been used
+        cdef vector[int] new_tid_from_old
+        cdef size_t current_tensor, fixed_tensor = 0
+        for current_tensor in range(<size_t>len(self.__nodes)):
+            if self.__nodes[current_tensor] is not None:
+                self.__nodes[fixed_tensor] = self.__nodes[current_tensor]
+                self.__index_lists[fixed_tensor] = self.__index_lists[current_tensor]
+                new_tid_from_old.push_back(fixed_tensor)
+                fixed_tensor += 1
+            else:
+                new_tid_from_old.push_back(-1)
+        self.__nodes = self.__nodes[:fixed_tensor]
+        self.__index_lists.resize(fixed_tensor)
+
+        # Remove edges that were contracted away
+        cdef vector[int] new_eid_from_old
+        cdef size_t current_edge, fixed_edge = 0
+        for current_edge in range(self.__edges.size()):
+            if new_tid_from_old[self.__edges[current_edge].tensor1_id] >= 0 and new_tid_from_old[self.__edges[current_edge].tensor1_id] >= 0:
+                # Both edges of the tensor still exist; correct the tensor ids
+                self.__edges[fixed_edge].tensor1_id = new_tid_from_old[self.__edges[current_edge].tensor1_id]
+                self.__edges[fixed_edge].tensor2_id = new_tid_from_old[self.__edges[current_edge].tensor2_id]
+                new_eid_from_old.push_back(fixed_edge)
+                fixed_edge += 1
+            else:
+                new_eid_from_old.push_back(-2)
+        self.__edges.resize(fixed_edge)
+        cdef size_t t_id, index
+        for t_id in range(fixed_tensor):
+            for index in range(self.__index_lists[t_id].size()):
+                self.__index_lists[t_id][index] = new_eid_from_old[self.__index_lists[t_id][index]]
+
+        # Update the contraction tree
+        result_tree_context.reindex(new_tid_from_old, new_eid_from_old)
+        return result_tree_context.get_tree(top), new_eid_from_old
+
+    """
+    def identify_partial(self, contraction_tree, tensor_api, contract_below):
+        stack = []
+
+        result_network = TensorNetwork()
+        result_tree_context = contraction_methods.contraction_tree.ContractionTreeContext()
+
+        for node in contraction_tree.iterate_postorder():
+            if node.is_leaf:
+                stack.append(
+                    (True, self.__nodes[node.tensor_index].build(tensor_api.create_tensor))
+                )
+            else:
+                right_created, right = stack.pop()
+                left_created, left = stack.pop()
+                if left_created and right_created \
+                    and left.rank < contract_below \
+                    and right.rank < contract_below \
+                    and len(node.free_edges) < contract_below:
+
+                    contraction_result = tensor_api.tensordot(
+                        left, right, (node.left_edge_map, node.right_edge_map)
+                    )
+                    stack.append((True, contraction_result))
+                else:
+                    if left_created:
+                        # virtualize left
+                        pass
+                    if right_created:
+                        # virtualize right
+                        pass
+                    stack.append((False, result_tree_context.join(left, right)))
+        return result_network, result_tree_context
+    """
 
     cdef FactorResult factor_out(self, size_t tensor_index, size_t dim1, size_t dim2):
         cdef size_t rank = self.__index_lists[tensor_index].size()
@@ -227,7 +346,6 @@ cdef class TensorNetwork:
             for i in range(self.__index_lists[t2_id].size()):
                 if self.__index_lists[t2_id][i] == <int>e:
                     tensor2_infos.append((t2_id, i))
-                    which_edge_tensor2 = i
                     break
             if not found:
                 raise RuntimeError('Unable to determine size of edge ' + str(e))
@@ -268,7 +386,6 @@ cdef class TensorNetwork:
                 for i in range(self.__index_lists[t2_id].size()):
                     if self.__index_lists[t2_id][i] == <int>e:
                         tensor_infos[-1].append((t2_id, i))
-                        which_edge_tensor2 = i
                         break
                 if not found:
                     raise RuntimeError('Unable to determine size of edge ' + str(e))
@@ -282,6 +399,73 @@ cdef class TensorNetwork:
                 for info in group:
                     tn_slice.__nodes[info[0]] = tn_slice.__nodes[info[0]].get_slice(info[1], value)
             yield tn_slice
+
+
+    def get_tensor_slices(self, edge_groups, tensor_factory):
+        if len(edge_groups) == 0:
+            # Return a slice generator for each tensor that does no slicing
+            return 1, [tensor_network.tensor.SliceSequence(t.build(tensor_factory), ([],), {}) for t in self.__nodes], [[]]
+
+        index_values = []
+        tensor_slice_lookup = [{} for tensor_id in range(len(self.__nodes))]
+        cdef size_t e, t1_id, t2_id, i, size=0, which_assignment_index=0
+        total_slice_count = 1
+        for group in edge_groups:
+            if len(group) == 0:
+                continue
+
+            for e in group:
+                t1_id = self.__edges[e].tensor1_id
+                t2_id = self.__edges[e].tensor2_id
+                found = False
+
+                for i in range(self.__index_lists[t1_id].size()):
+                    if self.__index_lists[t1_id][i] == <int>e:
+                        tensor_slice_lookup[t1_id][i] = which_assignment_index
+                        size = self.__nodes[t1_id].shape[i]
+                        found = True
+                        break
+                for i in range(self.__index_lists[t2_id].size()):
+                    if self.__index_lists[t2_id][i] == <int>e:
+                        tensor_slice_lookup[t2_id][i] = which_assignment_index
+                        break
+                if not found:
+                    raise RuntimeError('Unable to determine size of edge ' + str(e))
+            # Note t2_id and i fall through from the above loop
+            index_values.append(list(range(size)))
+            total_slice_count *= size
+            which_assignment_index += 1
+
+        return total_slice_count, [
+            tensor_network.tensor.SliceSequence(t.build(tensor_factory), index_values, lookup)
+                for t, lookup in zip(self.__nodes, tensor_slice_lookup)
+        ], product(*index_values)
+
+    def remove_sliced_indices_from(self, contraction_tree, edge_groups):
+        result_tree_context = contraction_methods.contraction_tree.ContractionTreeContext()
+        cdef vector[size_t] is_edge_sliced
+        cdef TensorNetworkEdge i
+        cdef int edge_id
+        for i in self.__edges:
+            is_edge_sliced.push_back(0)
+        for group in edge_groups:
+            for edge_id in group:
+                is_edge_sliced[edge_id] = 1
+
+        stack = []
+        cdef vector[int] free_edges
+        for node in contraction_tree.iterate_postorder():
+            if node.is_leaf:
+                free_edges.clear()
+                for edge_id in self.__index_lists[node.tensor_index]:
+                    if edge_id >= 0 and is_edge_sliced[edge_id] == 0:
+                        free_edges.push_back(edge_id)
+                stack.append(result_tree_context.leaf_manual(node.tensor_index, free_edges))
+            else:
+                right = stack.pop()
+                left = stack.pop()
+                stack.append(result_tree_context.join(left, right))
+        return result_tree_context.get_tree(stack.pop())
 
     def find_equivalent_edges(self, edge):
         to_process = [edge]
@@ -304,7 +488,22 @@ cdef class TensorNetwork:
                         seen.add(other_e)
         return seen
 
+    def equivalent_edge_sets(self):
+        """
+        For each edge, find a representative equivalent edge.
+
+        :return: A dictionary D such that, for each edge e, D[e] is equivalent to e.
+        """
+        equivalent_edges = {}
+        for e in range(self.num_edges()):
+            if e not in equivalent_edges:
+                for f in self.find_equivalent_edges(e):
+                    equivalent_edges[f] = e
+        return equivalent_edges
+
+
 def draw_graph(networkx_graph):
+    import networkx as nx
     from IPython.display import Image
 
     # convert from networkx -> pydot

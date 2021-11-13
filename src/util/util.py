@@ -1,5 +1,7 @@
 import click
 import ctypes
+import enum
+import itertools
 import os
 import queue
 import signal
@@ -37,7 +39,10 @@ class TimeoutTimer:
                 signal.setitimer(signal.ITIMER_REAL, self._initial_timeout)
                 self._enabled = True
         except AttributeError:
-            log("Unable to use signals; timeout will be less effective")
+            log(
+                "Unable to use signals; timeout will be less effective",
+                Verbosity.always,
+            )
         self._start_time = time.time()
         self._end_time = self._start_time + self._initial_timeout
         return self
@@ -158,33 +163,15 @@ class Stopwatch:
     def records(self):
         return dict(self.__records)
 
-
-class KeyValueOutput(click.File):
-    """
-    A convenient wrapper class for click.File that provides a nice interface for key/value pairs.
-    Additionally, allow outputting to stdout if '-' is provided as the argument,
-    or stderr is '!' is provided as the argument.
-    """
-
-    def convert(self, value, param, ctx):
-        if value in (b"-", "-"):
-
-            class PrintWrapper:
-                def write(self, s):
-                    print(s, end="")
-
-            result = PrintWrapper()
-        elif value in (b"!", "!"):
-
-            class StderrWrapper:
-                def write(self, s):
-                    print(s, file=sys.stderr, end="")
-
-            result = StderrWrapper()
-        else:
-            result = click.File.convert(self, value, param, ctx)
-        result.output_pair = lambda key, val: result.write(key + ": " + str(val) + "\n")
-        return result
+    def report_times(self):
+        for name, record in self.records.items():
+            if name == "Total":
+                output("-", Verbosity.plan_info)
+            output_pair(
+                name + " Time",
+                record,
+                Verbosity.always if name == "Total" else Verbosity.plan_info,
+            )
 
 
 class TypedChoice(click.Choice):
@@ -350,8 +337,68 @@ class DimacsStream:
                 raise RuntimeError("Unexpected line prefix in: {0}".format(line))
 
 
-def log(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+class Verbosity(enum.IntEnum):
+    always = 0
+    stages = 1
+    plan_info = 2
+    progress = 3
+    solver_output = 4
+    debug = 5
+
+
+output_verbosity = Verbosity.debug
+
+
+def set_verbosity(verbosity):
+    """
+    Set the level of information to output, globally
+    :param verbosity: 0 (minimal), 1, 2, 3, 4, 5 (everything)
+    :return: None
+    """
+    global output_verbosity
+    output_verbosity = verbosity
+
+
+def output(arg, verbosity=Verbosity.debug):
+    """
+    Output the text to stdout according to the global log level
+
+    :param arg: Text to output
+    :param verbosity: 0 (always), 1, 2, 3, 4, 5 (debug only)
+    :return: None
+    """
+    global output_verbosity
+    if verbosity <= output_verbosity:
+        print(arg)
+
+
+def output_pair(key, value, verbosity=Verbosity.debug, flush=True):
+    """
+    Output the key/value pair to the global log level like "Key: Value"
+
+    :param key: Key to output
+    :param value: Value to output
+    :param verbosity: 0 (always), 1, 2, 3, 4, 5 (debug only)
+    :param flush: If true, flush stdout afterwards
+    :return: None
+    """
+    global output_verbosity
+    if verbosity <= output_verbosity:
+        print(str(key) + ": " + str(value), flush=flush)
+
+
+def log(arg, verbosity=Verbosity.debug, flush=True, **kwargs):
+    """
+    Output the text to stderr according to the global log level
+
+    :param arg: Text to output
+    :param verbosity: 0 (always), 1, 2, 3, 4, 5 (debug only)
+    :param flush: If true, flush stderr afterwards
+    :param kwargs: Other arguments, passed to stderr
+    :return:
+    """
+    if verbosity <= output_verbosity:
+        print(arg, flush=flush, file=sys.stderr, **kwargs)
 
 
 def kill_on_crash(sig=None):
@@ -406,3 +453,51 @@ class BufferedStream:
             except queue.Empty:
                 if self.__finished:
                     raise StopIteration
+
+
+class GroupedHelp(click.Command):
+    """
+    Add high-level grouping to help command output
+    """
+
+    def __init__(self, groups, **kwargs):
+        click.Command.__init__(self, **kwargs)
+        self.__groups = groups
+
+    def get_help(self, ctx):
+        help_text = click.Command.get_help(self, ctx)
+        for indicator, group_name in self.__groups.items():
+            argument = "  --" + indicator
+            help_text = help_text.replace(
+                argument, "\n" + group_name + ":\n" + argument
+            )
+        return help_text
+
+
+def split_every(iterable, n):
+    """
+    Split the iterable into lists of size n.
+    Note that the final iterable may be < n, if n does not evenly divide the number of elements.
+
+    :param iterable: The iterable to split
+    :param n: Size of groups
+    :return: An iterator that yields lists of size <= n.
+    """
+    i = iter(iterable)
+    piece = list(itertools.islice(i, n))
+    while piece:
+        yield piece
+        piece = list(itertools.islice(i, n))
+
+
+def normalize_TPU_addr(addr):
+    """
+    Ensure that a TPU addr always has the form grpc://.*:8470
+    :param addr:
+    :return:
+    """
+    if not addr.startswith("grpc://"):
+        addr = "grpc://" + addr
+    if not addr.endswith(":8470"):
+        addr = addr + ":8470"
+    return addr

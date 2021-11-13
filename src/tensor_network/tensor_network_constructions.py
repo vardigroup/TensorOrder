@@ -4,8 +4,14 @@ from tensor_network.tensor import Tensor
 from collections import Counter
 
 
-def cnf_count(dimacs_file):
-    formula = Formula.parse_DIMACS(dimacs_file, include_missing_vars=False)
+def cnf_count(dimacs_file, weight_format):
+    """
+    Construct a tensor network from the Boolean formula
+    :param dimacs_file: A handler to the file to read the formula, in DIMACS format
+    :param weight_format: Format of weights
+    :return: A tensor network, whose contraction is the weighted model count of the formula
+    """
+    formula = Formula.parse_DIMACS(dimacs_file, weight_format)
 
     network = TensorNetwork()
 
@@ -36,7 +42,21 @@ def cnf_count(dimacs_file):
 
 
 class OrTensor(Tensor):
+    """
+    A tensor representing an OR gate
+    """
+
     def __init__(self, literals_positive, output_index=None):
+        """
+        Build a tensor representing an OR gate, whose rank is the length of [literals_positive].
+
+        If output_index=None, tensor value is the OR of all indices.
+        If an output_index is provided, tensor value is 1 if the output index is equal to the OR of all other indices.
+        (Indices are negated according to the literal information)
+
+        :param literals_positive: A list of bools, each False if the corresponding index should be negated
+        :param output_index: See above
+        """
         super().__init__([2] * len(literals_positive), label="or")
 
         self.__literals_positive = literals_positive
@@ -100,7 +120,19 @@ class OrTensor(Tensor):
 
 
 class VariableTensor(Tensor):
+    """
+    A tensor representing a variable. This tensor is diagonal
+    """
+
     def __init__(self, rank, positive_weight, negative_weight, label=None):
+        """
+        Build a diagonal tensor representing a variable
+
+        :param rank: Number of dimensions of the tensor
+        :param positive_weight: Value if all indices are 1
+        :param negative_weight: Value if all indices are 0
+        :param label: Extra display info
+        """
         super().__init__((2,) * rank, label=label)
         self.__positive_weight = positive_weight
         self.__negative_weight = negative_weight

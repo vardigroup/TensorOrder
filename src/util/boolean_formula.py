@@ -1,4 +1,12 @@
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
+from enum import Enum
+
+
+class WeightFormat(Enum):
+    unweighted = 0
+    cachet = 1
+    minic2d = 2
+    mcc = 3
 
 
 class Formula:
@@ -27,7 +35,7 @@ class Formula:
         :return: An id of the new variable, which can be used to construct clauses
         """
         new_var_id = len(self._variables) + 1
-        self._variables[new_var_id] = (neg_weight, pos_weight)
+        self._variables[new_var_id] = [neg_weight, pos_weight]
         return new_var_id
 
     @property
@@ -41,8 +49,31 @@ class Formula:
     def literal_weight(self, lit):
         """
         Returns the multiplicative weight of the provided DIMACS literal.
+
+        :param lit: Literal to get weight of
         """
         return self._variables[abs(lit)][1 if lit > 0 else 0]
+
+    def set_literal_weight(self, lit, weight):
+        """
+        Set the multiplicative weight of the provided DIMACS literal.
+
+        :param lit: Literal to set weight of
+        :param weight: Weight to use
+        """
+        if abs(lit) not in self._variables:
+            self._variables[abs(lit)] = [1, 1]
+        self._variables[abs(lit)][1 if lit > 0 else 0] = weight
+
+    def set_variable_weight(self, var_id, neg_weight, pos_weight):
+        """
+        Create a new weighted variable in the formula.
+
+        :param var_id: Variable to set weight of
+        :param neg_weight: Multiplicative weight on an assignment when variable is false
+        :param pos_weight: Multiplicative weight on an assignment when variable is true
+        """
+        self._variables[var_id] = [neg_weight, pos_weight]
 
     def write_cachet(self, filename):
         """
@@ -166,7 +197,7 @@ class Formula:
             )
 
     @staticmethod
-    def parse_DIMACS(file, include_missing_vars=False):
+    def parse_DIMACS(file, weight_format):
         """
         Parse a DIMACS file into a formula.
 
@@ -178,19 +209,20 @@ class Formula:
         If [prob] is -1, the variable is unweighted
 
         :param file: A handler to the file to read
-        :param include_missing_vars: If true, variables indicated by the DIMACS header are assigned a weight 1 1
+        :param weight_format: Format of weights
         :return: the resulting formula
         """
         result = Formula()
-        vars = defaultdict(lambda: result.fresh_variable(1, 1))
 
         num_vars = 0
         for line in file:
-            if line.startswith("c weights"):  # MiniC2D weights
+            if weight_format == WeightFormat.minic2d and line.startswith(
+                "c weights"
+            ):  # MiniC2D weights
                 weights = line.split(" ")[2:]
                 for i in range(len(weights) // 2):
-                    vars[i + 1] = result.fresh_variable(
-                        float(weights[2 * i + 1]), float(weights[2 * i])
+                    result.set_variable_weight(
+                        i + 1, float(weights[2 * i + 1]), float(weights[2 * i])
                     )
             elif len(line) == 0 or line[0] == "c":
                 continue
@@ -198,21 +230,33 @@ class Formula:
                 num_vars = int(line.split()[2])
             elif line[0] == "w":  # Cachet weights
                 args = line.split()
-                if float(args[2]) == -1:
-                    vars[int(args[1])] = result.fresh_variable(1, 1)
+                var_id = int(args[1])
+                weight = float(args[2])
+                if weight_format == WeightFormat.cachet:
+                    if weight == -1:
+                        result.set_variable_weight(var_id, 1, 1)
+                    else:
+                        result.set_variable_weight(var_id, 1 - weight, weight)
+                elif weight_format == WeightFormat.mcc:
+                    result.set_literal_weight(var_id, weight)
                 else:
-                    prob = float(args[2])
-                    vars[int(args[1])] = result.fresh_variable(1 - prob, prob)
+                    raise RuntimeError(
+                        "w lines cannot be used in " + str(weight_format)
+                    )
+
             else:
                 literals = map(int, line.split())
-                literals = [
-                    vars[abs(lit)] * (1, -1)[lit < 0] for lit in literals if lit != 0
-                ]
+                literals = [lit for lit in literals if lit != 0]
                 if len(literals) == 0:
                     continue
                 result.add_clause(literals)
 
-        if include_missing_vars:
-            for v in range(1, num_vars + 1):
-                vars[v]
+        # Set default weights
+        if weight_format == WeightFormat.cachet:
+            default_weight = 0.5
+        else:
+            default_weight = 1
+        for var_id in range(1, num_vars + 1):
+            if var_id not in result._variables:
+                result.set_variable_weight(var_id, default_weight, default_weight)
         return result
