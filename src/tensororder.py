@@ -32,7 +32,7 @@ Main entry point for the full TensorOrder tool
     type=util.TaggedChoice(
         {str(v.value): v for v in util.Verbosity}, case_sensitive=False
     ),
-    default=str(int(util.Verbosity.debug)),
+    default=str(int(util.Verbosity.always)),
     show_default=True,
     help="Detail level of output",
 )
