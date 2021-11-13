@@ -1,5 +1,8 @@
 FROM python:3.7-slim
 
+ADD http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz /solvers/metis-5.1.0.tar.gz
+ENV METIS_DLL=/solvers/metis-5.1.0/build/Linux-x86_64/libmetis/libmetis.so
+
 RUN apt-get clean \
 && cd /var/lib/apt \
 && mv lists lists.old \
@@ -8,18 +11,14 @@ RUN apt-get clean \
 && apt-get upgrade -y \
 && mkdir -p /usr/share/man/man1 \
 && apt-get -y install g++ make libxml2-dev zlib1g-dev cmake openjdk-11-jdk libopenblas-dev \
-&& pip install click numpy python-igraph networkx==2.1.0 turbine cython threadpoolctl jax jaxlib
-
-COPY solvers/metis-5.1.0.tar.gz /solvers/metis-5.1.0.tar.gz
-ENV METIS_DLL=/solvers/metis-5.1.0/build/Linux-x86_64/libmetis/libmetis.so
-RUN cd /solvers/ \
+&& cd /solvers/ \
 && tar -xvf metis-5.1.0.tar.gz \
 && rm metis-5.1.0.tar.gz \
 && cd /solvers/metis-5.1.0 \
 && make config shared=1 \
 && make \
 && make install \
-&& pip install metis
+&& pip install click numpy python-igraph networkx==2.1.0 metis turbine cython threadpoolctl jax jaxlib
 
 COPY solvers/htd-master /solvers/htd-master
 RUN cd /solvers/htd-master \
